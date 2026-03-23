@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emana Slides - HTML para PPTX</title>
+    
+    <!-- Scripts Necessários: React, Babel, Tailwind e PptxGenJS -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    
+    <!-- Lucide Icons (Substituindo os componentes React por SVG para portabilidade total) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+        /* Animação de fade */
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body class="bg-[#0A192F]">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const DEFAULT_HTML = `<!-- 
+  Emana Slides - Exemplo
+  Cada <section> vira um slide.
+-->
+<section style="background-color: #0A192F; color: #FFFFFF; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px;">
+  <h1 style="color: #DC143C; font-size: 64px; margin-bottom: 20px;">Emana Slides</h1>
+  <p style="font-size: 24px; max-width: 800px; color: #E2E8F0;">
+    O seu código HTML agora é uma apresentação editável.
+  </p>
+</section>
+
+<section style="background-color: #FFFFFF; color: #0F172A; height: 100vh; padding: 60px;">
+  <h2 style="font-size: 48px; color: #DC143C; margin-bottom: 30px;">Vantagens de Exportar</h2>
+  <ul style="font-size: 28px; line-height: 1.8; margin-left: 40px;">
+    <li>Textos permanecem editáveis no PowerPoint</li>
+    <li>Fácil de compartilhar via GitHub</li>
+    <li>Suporte a cores e estilos inline</li>
+  </ul>
+</section>`;
+
+        const rgbToHex = (rgb) => {
+            if (!rgb || rgb === 'rgba(0, 0, 0, 0)') return '000000';
+            const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (!match) return '000000';
+            return match.slice(1).map(n => parseInt(n, 10).toString(16).padStart(2, '0')).join('').toUpperCase();
+        };
+
+        function App() {
+            const [htmlCode, setHtmlCode] = useState(DEFAULT_HTML);
+            const [viewMode, setViewMode] = useState('workspace');
+            const [isExporting, setIsExporting] = useState(false);
+            const previewRef = useRef(null);
+
+            const exportToPowerPoint = async () => {
+                if (!window.PptxGenJS || !previewRef.current) return;
+                setIsExporting(true);
+
+                try {
+                    const pptx = new window.PptxGenJS();
+                    pptx.layout = 'LAYOUT_16x9';
+                    const container = previewRef.current;
+                    const sections = container.querySelectorAll('section, .slide');
+                    const slidesNodes = sections.length > 0 ? Array.from(sections) : [container];
+
+                    slidesNodes.forEach((slideNode) => {
+                        const slide = pptx.addSlide();
+                        const slideBgColor = window.getComputedStyle(slideNode).backgroundColor;
+                        if (slideBgColor && slideBgColor !== 'rgba(0, 0, 0, 0)') {
+                            slide.background = { color: rgbToHex(slideBgColor) };
+                        }
+
+                        let currentY = 0.5;
+                        const contentElements = slideNode.querySelectorAll('h1, h2, h3, h4, p, ul, ol, img');
+                        
+                        contentElements.forEach((el) => {
+                            const tagName = el.tagName.toLowerCase();
+                            const computedStyle = window.getComputedStyle(el);
+                            const color = rgbToHex(computedStyle.color);
+                            const fontSizePx = parseFloat(computedStyle.fontSize);
+                            const fontSizePt = (fontSizePx * 0.75) || 18;
+
+                            if (['h1', 'h2', 'h3', 'h4', 'p'].includes(tagName)) {
+                                const text = el.innerText.trim();
+                                if (!text) return;
+                                slide.addText(text, {
+                                    x: 0.5, y: currentY, w: '90%',
+                                    fontSize: fontSizePt, color: color,
+                                    bold: tagName.startsWith('h') || parseInt(computedStyle.fontWeight) > 500,
+                                    align: computedStyle.textAlign || 'left'
+                                });
+                                currentY += (fontSizePt / 72) * Math.ceil(text.length / 60) + 0.3;
+                            } else if (['ul', 'ol'].includes(tagName)) {
+                                const listItems = Array.from(el.querySelectorAll('li')).map(li => ({
+                                    text: li.innerText.trim(),
+                                    options: { bullet: true, color: color, fontSize: fontSizePt }
+                                }));
+                                slide.addText(listItems, { x: 0.5, y: currentY, w: '90%' });
+                                currentY += (listItems.length * (fontSizePt / 72)) + 0.5;
+                            }
+                        });
+                    });
+
+                    await pptx.writeFile({ fileName: `Emana_Slides_${new Date().getTime()}.pptx` });
+                } catch (e) {
+                    console.error(e);
+                    alert("Erro ao exportar.");
+                } finally {
+                    setIsExporting(false);
+                }
+            };
+
+            if (viewMode === 'preview') {
+                return (
+                    <div className="relative w-screen h-screen overflow-hidden bg-white fade-in">
+                        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-[#0A192F]/90 backdrop-blur-md p-2 rounded-2xl shadow-2xl border border-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300">
+                            <button onClick={() => setViewMode('workspace')} className="flex items-center gap-2 px-4 py-2 text-white hover:bg-white/10 rounded-xl transition-colors text-sm font-medium">
+                                Voltar
+                            </button>
+                            <button onClick={exportToPowerPoint} disabled={isExporting} className="flex items-center gap-2 px-6 py-2 bg-[#DC143C] text-white rounded-xl transition-colors font-medium text-sm">
+                                {isExporting ? 'Processando...' : 'Baixar PPTX'}
+                            </button>
+                        </div>
+                        <div ref={previewRef} className="w-full h-full overflow-y-auto" dangerouslySetInnerHTML={{ __html: htmlCode }} />
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen text-white flex flex-col fade-in">
+                    <header className="px-8 py-6 flex items-center justify-between border-b border-white/5">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#DC143C] to-[#ff4d6d] flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" x2="21" y1="9" y2="9"/><line x1="9" x2="9" y1="21" y2="9"/></svg>
+                            </div>
+                            <h1 className="text-xl font-bold">Emana Slides</h1>
+                        </div>
+                        <span className="text-xs text-slate-500 bg-white/5 px-3 py-1 rounded-full uppercase tracking-widest">v2.0 Standalone</span>
+                    </header>
+
+                    <main className="flex-1 flex flex-col max-w-5xl w-full mx-auto p-8 gap-6">
+                        <div className="flex flex-col gap-2">
+                            <h2 className="text-4xl font-extrabold text-white">Criar Apresentação</h2>
+                            <p className="text-slate-400">Cole o código HTML estruturado com tags &lt;section&gt; para cada slide.</p>
+                        </div>
+
+                        <div className="relative flex-1 flex flex-col bg-[#0f2545] border border-white/10 rounded-2xl shadow-2xl overflow-hidden focus-within:border-[#DC143C]/50 transition-all">
+                            <textarea
+                                value={htmlCode}
+                                onChange={(e) => setHtmlCode(e.target.value)}
+                                className="flex-1 w-full p-6 bg-transparent text-slate-300 font-mono text-sm outline-none resize-none custom-scrollbar"
+                                spellCheck="false"
+                            />
+                        </div>
+
+                        <div className="flex justify-end">
+                            <button
+                                onClick={() => setViewMode('preview')}
+                                className="px-8 py-4 bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl font-bold text-lg transition-all transform hover:scale-105 shadow-lg shadow-[#DC143C]/20"
+                            >
+                                Visualizar Slides
+                            </button>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
